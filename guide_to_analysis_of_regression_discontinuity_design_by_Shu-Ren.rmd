@@ -1,0 +1,131 @@
+---
+title Guide to Regression Discontinuity Design
+output
+  html_document
+    df_print paged
+editor_options
+  chunk_output_type inline
+---
+
+# Analysis of Regression Discontinuity Design
+
+This code uses simulated data based on a study of professional development of early childhood educators in Florida.
+Teacherstudent interactions in early childhood classroom were evaluated with the Classroom Assessment Scoring system (CLASS)
+Teachers of classrooms scoring below a 3 had to enroll in professional development
+The CLASS was also used as the outcome, measured at the end of the year
+
+
+# Read and check the dataset
+load(file="U:/U-Shu-Ren/Mine/Data_Certificate/DSMDLP Training Fall 2024/Module_13/simulated_RDD_data.Rdata")
+
+#Read and check the dataset
+```{r}
+load(file="U:/U-Shu-Ren/Mine/Data_Certificate/DSMDLP Training Fall 2024/Module_13/simulated_RDD_data.Rdata")
+summary(data)
+```
+```{r}
+names(data)
+```
+Plot the observations and regression lines
+
+```{r}
+
+# Plot the data
+with(data, plot(CLASS.post ~ CLASS.pre, col=NULL, xlab="CLASS.pre",
+     ylab="CLASS.post", ylim=c(min(CLASS.post)-10, max(CLASS.post)+10)))
+
+# Obtain index of those treated
+tx <- which(data$PD == 1)  # obtain index of those treated
+
+# Add points to the plot
+with(data, points(CLASS.pre[tx], CLASS.post[tx], col="green", pch=4))
+with(data, points(CLASS.pre[-tx], CLASS.post[-tx], col="red",pch=5))
+
+
+```
+
+=====================================================
+Center assignment variable
+```{r}
+cutoff=3
+data$CLASS.pre = data$CLASS.pre - cutoff
+summary(data$CLASS.pre)
+```
+
+# Estimate Local Average Treatment Effect with the ANCOVA model
+
+```{r}
+
+
+# Fit the linear model
+model <- lm(CLASS.post ~ PD + CLASS.pre + I(CLASS.pre^2), data)
+
+model = lm(CLASS.post ~ PD + CLASS.pre + I(CLASS.pre^2), data)
+summary(model)
+```
+
+
+
+Add the fitted lines to plot
+```{r}
+with(data,plot(CLASS.post ~ CLASS.pre, col=NULL, xlab=CLASS.pre,
+     ylab=CLASS.post, ylim=c(min(CLASS.post)-10, max(CLASS.post)+10)))
+
+tx - which(data$PD==1)  #obtain index of those treated.
+with(data, points(CLASS.pre[tx], CLASS.post[tx], col="cyan", pch=4))
+with(data,points(CLASS.pre[-tx], CLASS.post[-tx], col="yellow"))
+coefs <- coefficients(model)
+
+pred.control <- function(pre) {
+  coefs[1] + coefs[3] * pre + coefs[4] * pre^2
+}
+pred.control = function(pre) {
+  coefs[1] + coefs[3]*pre + coefs[4]*pre^2}
+pred.treat = function(pre) {coefs[1] + coefs[2] + coefs[3]*pre + coefs[4]*pre^2}
+with(data,curve(pred.control, from=min(CLASS.pre), to=0, add=T, col="blue"))
+with(data,curve(pred.treat, 0, max(CLASS.pre)+1, add=T, col="red"))
+```
+
+================================================
+
+# Estimate the local average treatment effect with local linear regression
+
+Use treatment observations to fit a local linear regression
+```{r}
+lo.tx <- loess(CLASS.post ~ CLASS.pre, data[data$PD==1,],span=0.75,family="gaussian", surface="direct")
+summary(lo.tx)
+```
+
+
+Use control observations to fit a local linear regression
+```{r}
+lo.c <- loess(CLASS.post ~ CLASS.pre, data[data$PD==0,], span=0.75,family="gaussian", surface="direct")
+summary(lo.c)
+```
+
+Predict the expected value of the treated at the cutoff
+```{r}
+yhat.tx <- predict(lo.tx, newdata=0, se=T) #predict value of treated at the cutoff
+yhat.tx
+```
+
+Predict the expected value of the control at the cutoff
+```{r}
+yhat.c <- predict(lo.c, newdata = 0, se=T) #predict value of untreated at the cutoff
+yhat.c
+```
+
+
+Estimate the local average treatement effect
+```{r}
+effect = yhat.tx$fit - yhat.c$fit  #estimate treatment effect
+effect
+```
+
+
+calculate confidence interval of the LATE
+```{r}
+lower.limit = effect - 1.96*(yhat.tx$se.fit + yhat.c$se.fit)
+upper.limit = effect + 1.96*(yhat.tx$se.fit + yhat.c$se.fit)
+paste(lower.limit,upper.limit)
+```
